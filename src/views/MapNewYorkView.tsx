@@ -7,6 +7,7 @@ import { loadZipData, type ZipCodeStats } from '../utils/zipData'
 import { classifyZipcode, type DesertStatus } from '../utils/desertCriteria'
 
 type MetricKey =
+  | 'demandClass'
   | 'avgIncome'
   | 'employmentRate'
   | 'totalPopulation'
@@ -15,6 +16,7 @@ type MetricKey =
   | 'desertStatus'
 
 const METRIC_LABELS: Record<MetricKey, string> = {
+  demandClass: 'Demand Class',
   avgIncome: 'Average Income ($)',
   employmentRate: 'Employment Rate (%)',
   totalPopulation: 'Total Population',
@@ -24,6 +26,12 @@ const METRIC_LABELS: Record<MetricKey, string> = {
 }
 
 function legendRows(metric: MetricKey): Array<{ color: string; label: string }> {
+  if (metric === 'demandClass') {
+    return [
+      { color: '#2b8cbe', label: 'Low demand' },
+      { color: '#de2d26', label: 'High demand' },
+    ]
+  }
   if (metric === 'desertStatus') {
     return [
       { color: '#2ca25f', label: 'Not desert' },
@@ -75,6 +83,9 @@ function getMetricValue(
 ): number | undefined {
   if (!stats) return undefined
   switch (metric) {
+    case 'demandClass':
+      if (!desert) return undefined
+      return desert.isHighDemand ? 1 : 0
     case 'avgIncome':
       return stats.avgIncome
     case 'employmentRate':
@@ -97,6 +108,9 @@ function getMetricValue(
 function choroplethColor(value: number | undefined, metric: MetricKey): string {
   if (value == null || !Number.isFinite(value)) return '#e0e0e0'
 
+  if (metric === 'demandClass') {
+    return value >= 1 ? '#de2d26' : '#2b8cbe'
+  }
   if (metric === 'desertStatus') {
     if (value === 0) return '#2ca25f'
     if (value === 1) return '#fee391'
@@ -408,7 +422,7 @@ export function MapNewYorkViewContainer() {
   const [zipData, setZipData] = useState<Record<string, ZipCodeStats> | null>(null)
   const [geoJson, setGeoJson] = useState<FeatureCollection | null>(null)
   const [selectedZip, setSelectedZip] = useState<string | null>(null)
-  const [metric, setMetric] = useState<MetricKey>('avgIncome')
+  const [metric, setMetric] = useState<MetricKey>('demandClass')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -534,7 +548,7 @@ export function MapNewYorkViewContainer() {
                 }}
               >
                 {desertLabel(selectedDesert)}
-                {selectedDesert.isHighDemand ? ' (High demand)' : ' (Normal demand)'}
+                {selectedDesert.isHighDemand ? ' (High demand)' : ' (Low demand)'}
               </p>
             )}
             <hr />

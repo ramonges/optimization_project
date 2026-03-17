@@ -15,10 +15,11 @@ export interface DesertStatus {
  * Desert 0–5:           slots_0to5 < (2/3) * children 0–5.
  */
 export function classifyZipcode(stats: ZipCodeStats): DesertStatus {
-  const empRate = stats.employmentRate ?? 0
-  const income = stats.avgIncome ?? Infinity
+  const hasEmp = typeof stats.employmentRate === 'number' && Number.isFinite(stats.employmentRate)
+  const hasIncome = typeof stats.avgIncome === 'number' && Number.isFinite(stats.avgIncome)
 
-  const isHighDemand = empRate >= 0.6 || income <= 60000
+  // Align with notebook methodology: missing income/employment is classified as high-demand.
+  const isHighDemand = !hasEmp || !hasIncome || stats.employmentRate! >= 0.6 || stats.avgIncome! <= 60000
 
   const children0to12 = stats.totalChildren0to12 ?? 0
   const children0to5 = stats.children0to5 ?? 0
