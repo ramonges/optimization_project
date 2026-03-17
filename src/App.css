@@ -1,0 +1,236 @@
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: 240px;
+  min-width: 240px;
+  padding: 24px 16px;
+  border-right: 1px solid #ddd;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  background: #fafafa;
+}
+
+.app-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+  color: #111;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nav-item {
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #333;
+  text-align: left;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.15s;
+}
+
+.nav-item:hover {
+  background: #eee;
+}
+
+.nav-item.active {
+  background: #e3eeff;
+  border-color: #90b4f8;
+  color: #1a56db;
+  font-weight: 500;
+}
+
+.main-panel {
+  flex: 1;
+  padding: 0;
+  overflow: hidden;
+}
+
+.view-content {
+  height: 100%;
+}
+
+/* ---------- Map layout ---------- */
+.map-layout {
+  display: flex;
+  height: 100vh;
+}
+
+.map-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.map-controls {
+  padding: 10px 16px;
+  background: #fff;
+  border-bottom: 1px solid #ddd;
+  font-size: 14px;
+  z-index: 1000;
+}
+
+.map-controls select {
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  font-size: 14px;
+  margin-left: 6px;
+}
+
+.map-info {
+  width: 300px;
+  min-width: 300px;
+  border-left: 1px solid #ddd;
+  padding: 20px 16px;
+  overflow-y: auto;
+  background: #fff;
+}
+
+.map-info h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  color: #111;
+}
+
+.legend-box {
+  border: 1px solid #e6e6e6;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 12px;
+  background: #fafafa;
+}
+
+.legend-title {
+  font-size: 12px;
+  color: #555;
+  margin-bottom: 8px;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.legend-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid #999;
+}
+
+.info-card p {
+  margin: 6px 0;
+  font-size: 13px;
+  color: #333;
+}
+
+.info-card hr {
+  border: none;
+  border-top: 1px solid #eee;
+  margin: 10px 0;
+}
+
+.hint {
+  color: #888;
+  font-size: 13px;
+}
+
+/* Leaflet tooltip override for richer HTML */
+.leaflet-tooltip {
+  max-width: 280px;
+}
+
+.model-view {
+  padding: 24px;
+  max-width: 980px;
+}
+
+.model-view h2 {
+  margin-bottom: 8px;
+}
+
+.model-section {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid #e9e9e9;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.model-section h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.model-section ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.model-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.model-table th,
+.model-table td {
+  border: 1px solid #ececec;
+  padding: 8px;
+  text-align: left;
+}
+
+.model-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.model-controls label {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  color: #444;
+  gap: 6px;
+}
+
+.model-controls input,
+.model-controls select {
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.model-controls button {
+  border: 1px solid #bbb;
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: #f5f5f5;
+  color: #666;
+  cursor: not-allowed;
+}
+
+.formula-block {
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 6px;
+  background: #f8f8f8;
+  border: 1px solid #ececec;
+}
