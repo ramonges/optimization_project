@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { GeoJSON, MapContainer, TileLayer } from 'react-leaflet'
+import { CircleMarker, GeoJSON, MapContainer, TileLayer, Tooltip } from 'react-leaflet'
 import type { Feature, FeatureCollection } from 'geojson'
 import type { Layer, LeafletMouseEvent, PathOptions } from 'leaflet'
 import { fetchCsv, normalizeZip, num, type CsvRow } from '../utils/csv'
@@ -21,6 +21,14 @@ interface Model2Zip {
   newLarge?: number
   totalGap?: number
   u5Gap?: number
+}
+
+interface NewLocation {
+  zipcode: string
+  locationId?: string
+  size?: string
+  latitude?: number
+  longitude?: number
 }
 
 const METRIC_LABELS: Record<MetricKey, string> = {
@@ -53,6 +61,16 @@ function parseModel2Row(row: CsvRow): Model2Zip {
     newLarge: num(row, 'new_large'),
     totalGap: num(row, 'total_gap'),
     u5Gap: num(row, 'u5_gap'),
+  }
+}
+
+function parseNewLocation(row: CsvRow): NewLocation {
+  return {
+    zipcode: normalizeZip(row.zipcode),
+    locationId: row.location_id,
+    size: row.size,
+    latitude: num(row, 'latitude'),
+    longitude: num(row, 'longitude'),
   }
 }
 
@@ -91,6 +109,8 @@ export function Model2View() {
   const [geoJson, setGeoJson] = useState<FeatureCollection | null>(null)
   const [data, setData] = useState<Record<string, Model2Zip> | null>(null)
   const [rawByZip, setRawByZip] = useState<Record<string, CsvRow> | null>(null)
+  const [newLocations, setNewLocations] = useState<NewLocation[]>([])
+  const [showNewLocations, setShowNewLocations] = useState(false)
   const [selectedZip, setSelectedZip] = useState<string | null>(null)
   const [metric, setMetric] = useState<MetricKey>('totalCost')
   const [loading, setLoading] = useState(true)
@@ -99,7 +119,8 @@ export function Model2View() {
     Promise.all([
       fetch('/nyc_zipcodes.geojson').then((r) => r.json() as Promise<FeatureCollection>),
       fetchCsv('/model2_results_final.csv'),
-    ]).then(([geo, rows]) => {
+      fetchCsv('/new_facilities_locations.csv'),
+    ]).then(([geo, rows, locRows]) => {
       const map: Record<string, Model2Zip> = {}
       const rawMap: Record<string, CsvRow> = {}
       for (const row of rows) {
@@ -109,9 +130,11 @@ export function Model2View() {
           rawMap[parsed.zipcode] = row
         }
       }
+      const locs = locRows.map(parseNewLocation)
       setGeoJson(geo)
       setData(map)
       setRawByZip(rawMap)
+      setNewLocations(locs)
       setLoading(false)
     })
   }, [])
@@ -179,6 +202,26 @@ export function Model2View() {
 
   const selected = selectedZip ? data[selectedZip] : undefined
   const selectedRaw = selectedZip ? rawByZip[selectedZip] : undefined
+  const selectedZipLocations = selectedZip
+    ? newLocations.filter((l) => l.zipcode === selectedZip)
+    : []
+  const sizeCounts = selectedZipLocations.reduce(
+    (acc, l) => {
+      const s = (l.size ?? '').toLowerCase()
+      if (s === 'small') acc.small += 1
+      else if (s === 'medium') acc.medium += 1
+      else if (s === 'large') acc.large += 1
+      return acc
+    },
+    { small: 0, medium: 0, large: 0 },
+  )
+
+  const markerColor = (size?: string): string => {
+    const s = (size ?? '').toLowerCase()
+    if (s === 'small') return '#fdae6b'
+    if (s === 'medium') return '#9ecae1'
+    return '#3182bd'
+  }
 
   return (
     <div className="map-layout">
@@ -190,10 +233,37 @@ export function Model2View() {
               <option key={k} value={k}>{METRIC_LABELS[k]}</option>
             ))}
           </select>
+          <label style={{ marginLeft: 12 }}>
+            <input
+              type="checkbox"
+              checked={showNewLocations}
+              onChange={(e) => setShowNewLocations(e.target.checked)}
+            />
+            {' '}Show new locations (size)
+          </label>
         </div>
         <MapContainer center={[40.7128, -74.006]} zoom={11} style={{ height: '100%', width: '100%' }}>
           <TileLayer attribution='&copy; <a href="https://openstreetmap.org">OSM</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
           <GeoJSON key={metric} data={geoJson} onEachFeature={onEachFeature} />
+          {showNewLocations &&
+            newLocations
+              .filter((l) => l.latitude != null && l.longitude != null)
+              .map((l, idx) => (
+                <CircleMarker
+                  key={`${l.zipcode}-${l.locationId ?? idx}-${idx}`}
+                  center={[l.latitude as number, l.longitude as number]}
+                  radius={2.5}
+                  pathOptions={{
+                    color: markerColor(l.size),
+                    fillColor: markerColor(l.size),
+                    fillOpacity: 0.85,
+                  }}
+                >
+                  <Tooltip direction="top">
+                    ZIP {l.zipcode} - size: {l.size ?? 'N/A'} - location_id: {l.locationId ?? 'N/A'}
+                  </Tooltip>
+                </CircleMarker>
+              ))}
         </MapContainer>
       </div>
 
@@ -225,6 +295,9 @@ export function Model2View() {
                 <p><strong>New small / medium / large:</strong> {fmt(selected.newSmall)} / {fmt(selected.newMedium)} / {fmt(selected.newLarge)}</p>
                 <p><strong>Total gap:</strong> {fmt(selected.totalGap)}</p>
                 <p><strong>U5 gap:</strong> {fmt(selected.u5Gap)}</p>
+                <hr />
+                <p><strong>New locations in ZIP:</strong> {fmt(selectedZipLocations.length)}</p>
+                <p><strong>Size split (S/M/L):</strong> {sizeCounts.small} / {sizeCounts.medium} / {sizeCounts.large}</p>
                 {selectedRaw && (
                   <>
                     <hr />
