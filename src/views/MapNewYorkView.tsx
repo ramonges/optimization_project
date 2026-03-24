@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { GeoJSON, MapContainer, TileLayer } from 'react-leaflet'
-import type { Feature, FeatureCollection, Geometry, Position } from 'geojson'
+import type { Feature, FeatureCollection } from 'geojson'
 import type { Layer, LeafletMouseEvent, PathOptions } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { bool, fetchCsv, normalizeZip, num, type CsvRow } from '../utils/csv'
@@ -30,18 +30,6 @@ interface ZipParams {
   u5Gap?: number
 }
 
-type NumericField =
-  | 'pop0to5'
-  | 'pop0to12'
-  | 'avgIncome'
-  | 'employmentRate'
-  | 'numFacilities'
-  | 'totalSlots'
-  | 'under5Slots'
-  | 'numCandidateSites'
-  | 'totalGap'
-  | 'u5Gap'
-
 function parseZipParams(row: CsvRow): ZipParams {
   return {
     zipcode: normalizeZip(row.zipcode),
@@ -59,132 +47,6 @@ function parseZipParams(row: CsvRow): ZipParams {
     totalGap: num(row, 'total_gap'),
     u5Gap: num(row, 'u5_gap'),
   }
-}
-
-function roundCoord(v: number): string {
-  return v.toFixed(5)
-}
-
-function extractVertexKeys(geometry: Geometry): Set<string> {
-  const vertices = new Set<string>()
-  const addPos = (pos: Position) => {
-    if (pos.length < 2) return
-    vertices.add(`${roundCoord(pos[0])},${roundCoord(pos[1])}`)
-  }
-
-  if (geometry.type === 'Polygon') {
-    for (const ring of geometry.coordinates) {
-      for (const pos of ring) addPos(pos)
-    }
-  } else if (geometry.type === 'MultiPolygon') {
-    for (const polygon of geometry.coordinates) {
-      for (const ring of polygon) {
-        for (const pos of ring) addPos(pos)
-      }
-    }
-  }
-  return vertices
-}
-
-function buildNeighborMap(geoJson: FeatureCollection): Record<string, Set<string>> {
-  const vertexToZips = new Map<string, Set<string>>()
-  const neighbors: Record<string, Set<string>> = {}
-
-  for (const feature of geoJson.features) {
-    const zip = getZipFromFeature(feature)
-    if (!zip || !feature.geometry) continue
-    neighbors[zip] = neighbors[zip] ?? new Set<string>()
-    const vertices = extractVertexKeys(feature.geometry)
-    for (const v of vertices) {
-      const zips = vertexToZips.get(v) ?? new Set<string>()
-      zips.add(zip)
-      vertexToZips.set(v, zips)
-    }
-  }
-
-  for (const zips of vertexToZips.values()) {
-    const arr = Array.from(zips)
-    for (let i = 0; i < arr.length; i++) {
-      for (let j = i + 1; j < arr.length; j++) {
-        neighbors[arr[i]].add(arr[j])
-        neighbors[arr[j]].add(arr[i])
-      }
-    }
-  }
-  return neighbors
-}
-
-function deriveDemandFlags(z: ZipParams): Pick<ZipParams, 'isHighDemand' | 'isDesert' | 'u5Deficit'> {
-  const emp = z.employmentRate
-  const inc = z.avgIncome
-  const pop012 = z.pop0to12 ?? 0
-  const pop05 = z.pop0to5 ?? 0
-  const slots = z.totalSlots ?? 0
-  const slots05 = z.under5Slots ?? 0
-
-  const isHighDemand =
-    emp == null || inc == null ? true : emp >= 0.6 || inc <= 60000
-  const threshold = isHighDemand ? 0.5 : 1 / 3
-  const isDesert = pop012 > 0 ? slots <= threshold * pop012 : false
-  const u5Deficit = pop05 > 0 ? slots05 < (2 / 3) * pop05 : false
-  return { isHighDemand, isDesert, u5Deficit }
-}
-
-function imputeMissingZipcodesByNeighbors(
-  base: Record<string, ZipParams>,
-  geoJson: FeatureCollection,
-): { data: Record<string, ZipParams>; imputedZips: Set<string> } {
-  const data: Record<string, ZipParams> = { ...base }
-  const imputedZips = new Set<string>()
-  const neighbors = buildNeighborMap(geoJson)
-  const fields: NumericField[] = [
-    'pop0to5',
-    'pop0to12',
-    'avgIncome',
-    'employmentRate',
-    'numFacilities',
-    'totalSlots',
-    'under5Slots',
-    'numCandidateSites',
-    'totalGap',
-    'u5Gap',
-  ]
-
-  let changed = true
-  while (changed) {
-    changed = false
-    for (const zip of Object.keys(neighbors)) {
-      if (data[zip]) continue
-      const ns = Array.from(neighbors[zip]).filter((n) => !!data[n])
-      if (ns.length === 0) continue
-
-      const imputed: ZipParams = {
-        zipcode: zip,
-        isHighDemand: true,
-        isDesert: false,
-        u5Deficit: false,
-      }
-
-      let hasAny = false
-      for (const f of fields) {
-        const vals = ns
-          .map((n) => data[n][f])
-          .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
-        if (!vals.length) continue
-        imputed[f] = vals.reduce((a, b) => a + b, 0) / vals.length
-        hasAny = true
-      }
-
-      if (hasAny) {
-        Object.assign(imputed, deriveDemandFlags(imputed))
-        data[zip] = imputed
-        imputedZips.add(zip)
-        changed = true
-      }
-    }
-  }
-
-  return { data, imputedZips }
 }
 
 function getZipFromFeature(feature: Feature): string | undefined {
@@ -239,15 +101,11 @@ function fmt(n: number | undefined, decimals = 0): string {
   })
 }
 
-function tooltipHtml(zip: string, stats: ZipParams | undefined, imputed: boolean): string {
-  if (!stats) return `<b>ZIP ${zip}</b><br/>No dataset row for this zipcode`
-  const estimation = imputed
-    ? `<span style="color:#7f8c8d">Estimated from neighboring zipcodes</span><br/>`
-    : ''
+function tooltipHtml(zip: string, stats: ZipParams | undefined): string {
+  if (!stats) return `<b>ZIP ${zip}</b><br/>No row in zipcode_params_final.csv`
   return `
     <div style="font-size:13px;line-height:1.5">
       <b>ZIP ${zip}</b><br/>
-      ${estimation}
       ${stats.isHighDemand ? 'High demand' : 'Low demand'}<br/>
       ${stats.isDesert ? 'Desert (0-12)' : 'Not desert (0-12)'}<br/>
       ${stats.u5Deficit ? 'Deficit (0-5)' : 'No deficit (0-5)'}<br/>
@@ -292,18 +150,11 @@ export function MapNewYorkViewContainer() {
     })
   }, [])
 
-  const { resolvedData, imputedZips } = useMemo(() => {
-    if (!zipData || !geoJson) return { resolvedData: zipData, imputedZips: new Set<string>() }
-    const out = imputeMissingZipcodesByNeighbors(zipData, geoJson)
-    return { resolvedData: out.data, imputedZips: out.imputedZips }
-  }, [zipData, geoJson])
-
   const onEachFeature = useCallback(
     (feature: Feature, layer: Layer) => {
       const zip = getZipFromFeature(feature)
       if (!zip) return
-      const stats = resolvedData?.[zip]
-      const isImputed = imputedZips.has(zip)
+      const stats = zipData?.[zip]
       const value = getMetricValue(stats, metric)
       const color = colorFor(value, metric)
 
@@ -312,7 +163,7 @@ export function MapNewYorkViewContainer() {
         bindTooltip?: (content: string, options?: { sticky?: boolean }) => void
       }
       interactive.setStyle?.({ ...DEFAULT_STYLE, fillColor: color })
-      interactive.bindTooltip?.(tooltipHtml(zip, stats, isImputed), { sticky: true })
+      interactive.bindTooltip?.(tooltipHtml(zip, stats), { sticky: true })
 
       layer.on({
         mouseover: (e: LeafletMouseEvent) => {
@@ -327,14 +178,13 @@ export function MapNewYorkViewContainer() {
         click: () => setSelectedZip(zip),
       })
     },
-    [resolvedData, metric, imputedZips],
+    [zipData, metric],
   )
 
   if (loading) return <p style={{ padding: 24 }}>Loading map data...</p>
-  if (!geoJson || !resolvedData) return <p style={{ padding: 24 }}>Could not load data.</p>
+  if (!geoJson || !zipData) return <p style={{ padding: 24 }}>Could not load data.</p>
 
-  const selected = selectedZip ? resolvedData[selectedZip] : undefined
-  const selectedImputed = selectedZip ? imputedZips.has(selectedZip) : false
+  const selected = selectedZip ? zipData[selectedZip] : undefined
 
   return (
     <div className="map-layout">
@@ -378,11 +228,6 @@ export function MapNewYorkViewContainer() {
             <p><strong>ZIP:</strong> {selectedZip}</p>
             {selected ? (
               <>
-                {selectedImputed && (
-                  <p className="hint" style={{ marginTop: 8 }}>
-                    Estimated from neighboring zipcodes (limitrophes).
-                  </p>
-                )}
                 <p style={{ marginTop: 8, fontWeight: 600 }}>
                   {selected.isHighDemand ? 'High demand' : 'Low demand'} /{' '}
                   {selected.isDesert ? 'Desert (0-12)' : 'Not desert (0-12)'} /{' '}
@@ -402,7 +247,7 @@ export function MapNewYorkViewContainer() {
                 <p><strong>Under-5 gap:</strong> {fmt(selected.u5Gap)}</p>
               </>
             ) : (
-              <p className="hint">No direct row and no neighboring values available for estimation.</p>
+              <p className="hint">This zipcode has no row in `zipcode_params_final.csv`.</p>
             )}
           </div>
         ) : (
