@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { GeoJSON, MapContainer, TileLayer } from 'react-leaflet'
+import { CircleMarker, GeoJSON, MapContainer, TileLayer, Tooltip } from 'react-leaflet'
 import type { Feature, FeatureCollection } from 'geojson'
 import type { Layer, LeafletMouseEvent, PathOptions } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -30,6 +30,20 @@ interface ZipParams {
   u5Gap?: number
 }
 
+interface FacilityRow {
+  facilityId?: string
+  zipcode: string
+  facilityName: string
+  programType?: string
+  totalCapacity?: number
+  under5Capacity?: number
+  preschoolCapacity?: number
+  schoolAgeCapacity?: number
+  childrenCapacity?: number
+  latitude?: number
+  longitude?: number
+}
+
 function parseZipParams(row: CsvRow): ZipParams {
   return {
     zipcode: normalizeZip(row.zipcode),
@@ -46,6 +60,22 @@ function parseZipParams(row: CsvRow): ZipParams {
     u5Deficit: bool(row, 'u5_deficit'),
     totalGap: num(row, 'total_gap'),
     u5Gap: num(row, 'u5_gap'),
+  }
+}
+
+function parseFacility(row: CsvRow): FacilityRow {
+  return {
+    facilityId: row.facility_id,
+    zipcode: normalizeZip(row.zipcode),
+    facilityName: row.facility_name ?? '',
+    programType: row.program_type,
+    totalCapacity: num(row, 'total_capacity'),
+    under5Capacity: num(row, 'under5_capacity'),
+    preschoolCapacity: num(row, 'preschool_capacity'),
+    schoolAgeCapacity: num(row, 'school_age_capacity'),
+    childrenCapacity: num(row, 'children_capacity'),
+    latitude: num(row, 'latitude'),
+    longitude: num(row, 'longitude'),
   }
 }
 
@@ -130,6 +160,9 @@ const HIGHLIGHT_STYLE: PathOptions = {
 export function MapNewYorkViewContainer() {
   const [geoJson, setGeoJson] = useState<FeatureCollection | null>(null)
   const [zipData, setZipData] = useState<Record<string, ZipParams> | null>(null)
+  const [facilitiesByZip, setFacilitiesByZip] = useState<Record<string, FacilityRow[]>>({})
+  const [allFacilities, setAllFacilities] = useState<FacilityRow[]>([])
+  const [showFacilities, setShowFacilities] = useState(false)
   const [selectedZip, setSelectedZip] = useState<string | null>(null)
   const [metric, setMetric] = useState<MetricKey>('demandClass')
   const [loading, setLoading] = useState(true)
@@ -138,14 +171,26 @@ export function MapNewYorkViewContainer() {
     Promise.all([
       fetch('/nyc_zipcodes.geojson').then((r) => r.json() as Promise<FeatureCollection>),
       fetchCsv('/zipcode_params_final.csv'),
-    ]).then(([geo, rows]) => {
+      fetchCsv('/facilities_final.csv'),
+    ]).then(([geo, rows, facilityRows]) => {
       const map: Record<string, ZipParams> = {}
       for (const row of rows) {
         const parsed = parseZipParams(row)
         if (parsed.zipcode) map[parsed.zipcode] = parsed
       }
+      const facilitiesMap: Record<string, FacilityRow[]> = {}
+      const facilitiesList: FacilityRow[] = []
+      for (const row of facilityRows) {
+        const f = parseFacility(row)
+        if (!f.zipcode) continue
+        facilitiesMap[f.zipcode] = facilitiesMap[f.zipcode] ?? []
+        facilitiesMap[f.zipcode].push(f)
+        facilitiesList.push(f)
+      }
       setGeoJson(geo)
       setZipData(map)
+      setFacilitiesByZip(facilitiesMap)
+      setAllFacilities(facilitiesList)
       setLoading(false)
     })
   }, [])
@@ -202,6 +247,14 @@ export function MapNewYorkViewContainer() {
               </option>
             ))}
           </select>
+          <label style={{ marginLeft: 14 }}>
+            <input
+              type="checkbox"
+              checked={showFacilities}
+              onChange={(e) => setShowFacilities(e.target.checked)}
+            />
+            {' '}Show current facilities
+          </label>
         </div>
         <MapContainer center={[40.7128, -74.006]} zoom={11} style={{ height: '100%', width: '100%' }}>
           <TileLayer
@@ -209,6 +262,22 @@ export function MapNewYorkViewContainer() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <GeoJSON key={metric} data={geoJson} onEachFeature={onEachFeature} />
+          {showFacilities &&
+            allFacilities
+              .filter((f) => f.latitude != null && f.longitude != null)
+              .slice(0, 12000)
+              .map((f, idx) => (
+                <CircleMarker
+                  key={`${f.facilityId ?? 'facility'}-${idx}`}
+                  center={[f.latitude as number, f.longitude as number]}
+                  radius={2}
+                  pathOptions={{ color: '#111', fillColor: '#111', fillOpacity: 0.85 }}
+                >
+                  <Tooltip direction="top">
+                    {f.facilityName || 'Facility'} ({f.zipcode})
+                  </Tooltip>
+                </CircleMarker>
+              ))}
         </MapContainer>
       </div>
       <aside className="map-info">
@@ -245,6 +314,28 @@ export function MapNewYorkViewContainer() {
                 <p><strong>Candidate sites:</strong> {fmt(selected.numCandidateSites)}</p>
                 <p><strong>Total gap:</strong> {fmt(selected.totalGap)}</p>
                 <p><strong>Under-5 gap:</strong> {fmt(selected.u5Gap)}</p>
+                <hr />
+                <p><strong>Current facilities in ZIP:</strong> {fmt(facilitiesByZip[selectedZip]?.length)}</p>
+                <div className="raw-kv-list">
+                  {(facilitiesByZip[selectedZip] ?? []).length === 0 ? (
+                    <p className="hint">No facilities found in `facilities_final.csv` for this zipcode.</p>
+                  ) : (
+                    (facilitiesByZip[selectedZip] ?? []).map((f, idx) => (
+                      <p key={`${f.facilityId ?? idx}-${idx}`} style={{ marginBottom: 8 }}>
+                        <strong>facility_name:</strong> {f.facilityName || 'N/A'}<br />
+                        <strong>facility_id:</strong> {f.facilityId ?? 'N/A'}<br />
+                        <strong>program_type:</strong> {f.programType ?? 'N/A'}<br />
+                        <strong>total_capacity:</strong> {fmt(f.totalCapacity)}<br />
+                        <strong>under5_capacity:</strong> {fmt(f.under5Capacity)}<br />
+                        <strong>preschool_capacity:</strong> {fmt(f.preschoolCapacity)}<br />
+                        <strong>school_age_capacity:</strong> {fmt(f.schoolAgeCapacity)}<br />
+                        <strong>children_capacity:</strong> {fmt(f.childrenCapacity)}<br />
+                        <strong>latitude:</strong> {fmt(f.latitude, 6)}<br />
+                        <strong>longitude:</strong> {fmt(f.longitude, 6)}
+                      </p>
+                    ))
+                  )}
+                </div>
               </>
             ) : (
               <p className="hint">This zipcode has no row in `zipcode_params_final.csv`.</p>

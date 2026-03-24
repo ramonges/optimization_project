@@ -9,22 +9,6 @@ type ViewKey = 'map' | 'model1' | 'model2'
 function App() {
   const [activeView, setActiveView] = useState<ViewKey>('map')
 
-  const renderContent = () => {
-    if (activeView === 'map') {
-      return (
-        <div className="view-content">
-          <MapNewYorkViewContainer />
-        </div>
-      )
-    }
-
-    if (activeView === 'model1') {
-      return <Model1View />
-    }
-
-    return <Model2View />
-  }
-
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -53,7 +37,11 @@ function App() {
           </button>
         </nav>
       </aside>
-      <main className="main-panel">{renderContent()}</main>
+      <main className="main-panel">
+        {activeView === 'map' ? <MapNewYorkViewContainer /> : null}
+        {activeView === 'model1' ? <Model1View /> : null}
+        {activeView === 'model2' ? <Model2View /> : null}
+      </main>
     </div>
   )
 }

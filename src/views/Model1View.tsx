@@ -86,6 +86,7 @@ const HOVER_STYLE: PathOptions = { weight: 3, color: '#111', fillOpacity: 0.9 }
 export function Model1View() {
   const [geoJson, setGeoJson] = useState<FeatureCollection | null>(null)
   const [data, setData] = useState<Record<string, Model1Zip> | null>(null)
+  const [rawByZip, setRawByZip] = useState<Record<string, CsvRow> | null>(null)
   const [selectedZip, setSelectedZip] = useState<string | null>(null)
   const [metric, setMetric] = useState<MetricKey>('objective')
   const [loading, setLoading] = useState(true)
@@ -96,12 +97,17 @@ export function Model1View() {
       fetchCsv('/model1_results_final.csv'),
     ]).then(([geo, rows]) => {
       const map: Record<string, Model1Zip> = {}
+      const rawMap: Record<string, CsvRow> = {}
       for (const row of rows) {
         const parsed = parseModel1Row(row)
-        if (parsed.zipcode) map[parsed.zipcode] = parsed
+        if (parsed.zipcode) {
+          map[parsed.zipcode] = parsed
+          rawMap[parsed.zipcode] = row
+        }
       }
       setGeoJson(geo)
       setData(map)
+      setRawByZip(rawMap)
       setLoading(false)
     })
   }, [])
@@ -131,6 +137,7 @@ export function Model1View() {
       const zip = getZipFromFeature(feature)
       if (!zip || !data) return
       const row = data[zip]
+      const raw = rawByZip?.[zip]
       const val = row ? metricValue(row, metric) : undefined
       const color = colorByValue(val, maxMetric)
 
@@ -138,10 +145,16 @@ export function Model1View() {
         setStyle?: (style: PathOptions) => void
         bindTooltip?: (content: string, options?: { sticky?: boolean }) => void
       }
+      const allFieldsHtml = raw
+        ? Object.entries(raw)
+            .map(([k, v]) => `<div><strong>${k}:</strong> ${v === '' ? 'N/A' : v}</div>`)
+            .join('')
+        : ''
+
       interactive.setStyle?.({ ...BASE_STYLE, fillColor: color })
       interactive.bindTooltip?.(
         row
-          ? `<b>ZIP ${zip}</b><br/>${METRIC_LABELS[metric]}: ${fmt(val)}<br/>Status: ${row.status}`
+          ? `<div style="max-height:260px;overflow:auto;font-size:12px;line-height:1.4"><b>ZIP ${zip}</b><br/>${METRIC_LABELS[metric]}: ${fmt(val)}<br/>Status: ${row.status}<hr style="margin:4px 0"/>${allFieldsHtml}</div>`
           : `<b>ZIP ${zip}</b><br/>No Model1 result row`,
         { sticky: true },
       )
@@ -157,13 +170,14 @@ export function Model1View() {
         click: () => setSelectedZip(zip),
       })
     },
-    [data, metric, maxMetric],
+    [data, rawByZip, metric, maxMetric],
   )
 
   if (loading) return <p style={{ padding: 24 }}>Loading Model1 map...</p>
-  if (!geoJson || !data) return <p style={{ padding: 24 }}>Could not load Model1 data.</p>
+  if (!geoJson || !data || !rawByZip) return <p style={{ padding: 24 }}>Could not load Model1 data.</p>
 
   const selected = selectedZip ? data[selectedZip] : undefined
+  const selectedRaw = selectedZip ? rawByZip[selectedZip] : undefined
 
   return (
     <div className="map-layout">
@@ -210,6 +224,17 @@ export function Model1View() {
                 <hr />
                 <p><strong>Total gap:</strong> {fmt(selected.totalGap)}</p>
                 <p><strong>U5 gap:</strong> {fmt(selected.u5Gap)}</p>
+                {selectedRaw && (
+                  <>
+                    <hr />
+                    <p><strong>All CSV fields:</strong></p>
+                    <div className="raw-kv-list">
+                      {Object.entries(selectedRaw).map(([k, v]) => (
+                        <p key={k}><strong>{k}:</strong> {v === '' ? 'N/A' : v}</p>
+                      ))}
+                    </div>
+                  </>
+                )}
               </>
             ) : (
               <p className="hint">No row in `model1_results_final.csv` for this zipcode.</p>
