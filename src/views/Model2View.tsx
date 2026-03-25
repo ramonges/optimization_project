@@ -23,7 +23,7 @@ interface Model2Zip {
   u5Gap?: number
 }
 
-interface NewLocation {
+interface NewFacilityLocation {
   zipcode: string
   locationId?: string
   size?: string
@@ -64,7 +64,7 @@ function parseModel2Row(row: CsvRow): Model2Zip {
   }
 }
 
-function parseNewLocation(row: CsvRow): NewLocation {
+function parseNewFacilityLocation(row: CsvRow): NewFacilityLocation {
   return {
     zipcode: normalizeZip(row.zipcode),
     locationId: row.location_id,
@@ -109,7 +109,7 @@ export function Model2View() {
   const [geoJson, setGeoJson] = useState<FeatureCollection | null>(null)
   const [data, setData] = useState<Record<string, Model2Zip> | null>(null)
   const [rawByZip, setRawByZip] = useState<Record<string, CsvRow> | null>(null)
-  const [newLocations, setNewLocations] = useState<NewLocation[]>([])
+  const [newLocations, setNewLocations] = useState<NewFacilityLocation[]>([])
   const [showNewLocations, setShowNewLocations] = useState(false)
   const [selectedZip, setSelectedZip] = useState<string | null>(null)
   const [metric, setMetric] = useState<MetricKey>('totalCost')
@@ -130,11 +130,11 @@ export function Model2View() {
           rawMap[parsed.zipcode] = row
         }
       }
-      const locs = locRows.map(parseNewLocation)
+      const parsedLocs = locRows.map(parseNewFacilityLocation)
       setGeoJson(geo)
       setData(map)
       setRawByZip(rawMap)
-      setNewLocations(locs)
+      setNewLocations(parsedLocs)
       setLoading(false)
     })
   }, [])
@@ -205,7 +205,7 @@ export function Model2View() {
   const selectedZipLocations = selectedZip
     ? newLocations.filter((l) => l.zipcode === selectedZip)
     : []
-  const sizeCounts = selectedZipLocations.reduce(
+  const selectedSizeCounts = selectedZipLocations.reduce(
     (acc, l) => {
       const s = (l.size ?? '').toLowerCase()
       if (s === 'small') acc.small += 1
@@ -216,7 +216,7 @@ export function Model2View() {
     { small: 0, medium: 0, large: 0 },
   )
 
-  const markerColor = (size?: string): string => {
+  const locationColor = (size?: string): string => {
     const s = (size ?? '').toLowerCase()
     if (s === 'small') return '#fdae6b'
     if (s === 'medium') return '#9ecae1'
@@ -239,7 +239,7 @@ export function Model2View() {
               checked={showNewLocations}
               onChange={(e) => setShowNewLocations(e.target.checked)}
             />
-            {' '}Show new locations (size)
+            {' '}Show new locations by size
           </label>
         </div>
         <MapContainer center={[40.7128, -74.006]} zoom={11} style={{ height: '100%', width: '100%' }}>
@@ -254,8 +254,8 @@ export function Model2View() {
                   center={[l.latitude as number, l.longitude as number]}
                   radius={2.5}
                   pathOptions={{
-                    color: markerColor(l.size),
-                    fillColor: markerColor(l.size),
+                    color: locationColor(l.size),
+                    fillColor: locationColor(l.size),
                     fillOpacity: 0.85,
                   }}
                 >
@@ -297,7 +297,7 @@ export function Model2View() {
                 <p><strong>U5 gap:</strong> {fmt(selected.u5Gap)}</p>
                 <hr />
                 <p><strong>New locations in ZIP:</strong> {fmt(selectedZipLocations.length)}</p>
-                <p><strong>Size split (S/M/L):</strong> {sizeCounts.small} / {sizeCounts.medium} / {sizeCounts.large}</p>
+                <p><strong>Size split (S/M/L):</strong> {selectedSizeCounts.small} / {selectedSizeCounts.medium} / {selectedSizeCounts.large}</p>
                 {selectedRaw && (
                   <>
                     <hr />
