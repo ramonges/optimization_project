@@ -62,7 +62,3 @@ Note: the current frontend already loads and aggregates directly from raw CSV fi
 2. Select a metric from `Color by`.
 3. Hover over a zipcode polygon to see quick stats.
 4. Click a zipcode to pin full details in the right panel.
-
-## Next integration step
-
-`Model1` and `Model2` are scaffolded and ready to connect to a solver backend (Python or API) when you want to run optimization outputs directly from the UI.
